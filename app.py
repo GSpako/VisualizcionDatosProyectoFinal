@@ -8,10 +8,11 @@ from folium.features import GeoJsonTooltip
 from folium.plugins import MeasureControl, Fullscreen
 from streamlit_folium import st_folium
 
+# Debe ser el primer comando de Streamlit
+st.set_page_config(page_title="Indicadores VIH - Unidad 5", layout="wide")
+
 # Para regenerar .shx si falta
 os.environ["SHAPE_RESTORE_SHX"] = "YES"
-
-st.set_page_config("Indicadores VIH - Unidad 5", layout="wide")
 
 def parse_val(x):
     if pd.isna(x): return None
@@ -60,72 +61,83 @@ def metricas_globales(df):
     st.markdown("---")
 
 def plot_tendencia(df, key):
-    col1, col2 = st.columns([1, 4])
+    st.subheader("Tendencia Global")
+    col1, col2 = st.columns([1, 4], gap="small")
     with col1:
-        t = st.radio("Tipo de gráfico", ["Línea", "Área"], key=key + "_tp")
+        t = st.radio("", ["Línea", "Área"], key=key + "_tp", horizontal=True)
     with col2:
-        r = st.slider("Rango de años", min_año, max_año, (min_año, max_año), key=key + "_rng")
+        r = st.slider("", min_año, max_año, (min_año, max_año), key=key + "_rng")
     serie = df.sum(axis=0).loc[str(r[0]):str(r[1])].astype(int)
-    dfp = pd.DataFrame(serie, columns=[df.name])
-    if t == "Línea":
-        st.line_chart(dfp, use_container_width=True, height=300)
-    else:
-        st.area_chart(dfp, use_container_width=True, height=300)
+    dfp = pd.DataFrame({"Año": serie.index.astype(int), "Valor": serie.values})
+    chart = alt.Chart(dfp).mark_line() if t=="Línea" else alt.Chart(dfp).mark_area(opacity=0.3)
+    chart = chart.encode(x="Año:O", y="Valor:Q").properties(width=700, height=350).configure_view(strokeOpacity=0)
+    st.altair_chart(chart, use_container_width=True)
 
 def plot_top(df, key):
-    col1, col2 = st.columns(2)
+    st.subheader("Top N Países")
+    col1, col2 = st.columns(2, gap="small")
     with col1:
-        y = st.slider("Año", min_año, max_año, min_año, key=key + "_yr")
+        y = st.slider("", min_año, max_año, min_año, key=key + "_yr")
     with col2:
-        n = st.number_input("N países", 5, 20, 10, key=key + "_n")
+        n = st.number_input("", 5, 20, 10, key=key + "_n")
     topn = df[str(y)].fillna(0).sort_values(ascending=False).head(n).astype(int)
-    st.bar_chart(topn, use_container_width=True)
+    dfp = topn.reset_index().rename(columns={str(y): "Valor", "country": "País"})
+    chart = alt.Chart(dfp).mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5) \
+        .encode(x=alt.X("País:N", sort="-y"), y="Valor:Q") \
+        .properties(width=700, height=350).configure_axis(labelAngle=-45)
+    st.altair_chart(chart, use_container_width=True)
 
 def plot_evolucion(df, key):
-    col1, col2 = st.columns([1, 4])
+    st.subheader("Evolución por País")
+    col1, col2 = st.columns([1, 4], gap="small")
     with col1:
-        t = st.radio("Tipo de gráfico", ["Línea", "Área"], key=key + "_t2")
+        t = st.radio("", ["Línea", "Área"], key=key + "_t2", horizontal=True)
     with col2:
-        ps = st.multiselect("Países", df.index, df.index[:3], key=key + "_ps")
+        ps = st.multiselect("", df.index, df.index[:3], key=key + "_ps")
     if not ps:
         st.info("Selecciona al menos un país.")
         return
     evo = df.loc[ps].T.fillna(0).astype(int)
-    evo.index = evo.index.astype(int)
-    if t == "Línea":
-        st.line_chart(evo, use_container_width=True)
-    else:
-        st.area_chart(evo, use_container_width=True)
+    dfm = evo.reset_index().melt(id_vars="index", var_name="País", value_name="Valor").rename(columns={"index":"Año"})
+    mark = "line" if t=="Línea" else "area"
+    opacity = 1 if t=="Línea" else 0.3
+    chart = alt.Chart(dfm).mark_line(opacity=opacity) if mark=="line" else alt.Chart(dfm).mark_area(opacity=opacity)
+    chart = chart.encode(x="Año:O", y="Valor:Q", color="País:N").properties(width=700, height=350)
+    st.altair_chart(chart, use_container_width=True)
 
 def plot_comp_ind(_df, key):
-    sis = st.multiselect("Indicadores", list(indicadores), list(indicadores), key=key+"_inds")
-    comp = pd.DataFrame({i: indicadores[i].sum(axis=0).astype(int) for i in sis})
-    comp = comp.loc["1990":"2011"]
-    st.line_chart(comp, use_container_width=True)
+    st.subheader("Comparación Indicadores (1990–2011)")
+    sis = st.multiselect("", list(indicadores), list(indicadores), key=key+"_inds")
+    comp = pd.DataFrame({i: indicadores[i].sum(axis=0).astype(int) for i in sis}).loc["1990":"2011"]
+    dfm = comp.reset_index().melt(id_vars="index", var_name="Indicador", value_name="Valor").rename(columns={"index":"Año"})
+    chart = alt.Chart(dfm).mark_line(point=True).encode(x="Año:O", y="Valor:Q", color="Indicador:N") \
+                        .properties(width=700, height=350)
+    st.altair_chart(chart, use_container_width=True)
 
 def plot_tasa(df, key):
+    st.subheader("Tasas de Variación Anual")
     ps = st.multiselect("Países", df.index, df.index[:3], key=key+"_ps")
-    r = st.slider("Rango de años", min_año, max_año, (min_año, max_año), key=key + "_rng")
+    r = st.slider("", min_año, max_año, (min_año, max_año), key=key + "_rng")
     sub = df.loc[ps, [str(y) for y in range(r[0], r[1]+1)]].T
-    pct = (sub.pct_change().dropna() * 100)
-    pct.index = pct.index.astype(int)
-    st.line_chart(pct, use_container_width=True)
+    pct = (sub.pct_change().dropna() * 100).astype(float).reset_index().melt(id_vars="index", var_name="País", value_name="% Cambio").rename(columns={"index":"Año"})
+    chart = alt.Chart(pct).mark_bar().encode(x="Año:O", y="% Cambio:Q", color="País:N") \
+                         .properties(width=700, height=350)
+    st.altair_chart(chart, use_container_width=True)
 
 def render_comparacion():
     vistas = [
-        ("Tendencia Global", plot_tendencia),
+        ("Tendencia", plot_tendencia),
         ("Top N Países", plot_top),
-        ("Evolución por País", plot_evolucion),
-        ("Comparación Indicadores", plot_comp_ind),
-        ("Tasas de variación anual", plot_tasa)
+        ("Evolución", plot_evolucion),
+        ("Comparación Ind.", plot_comp_ind),
+        ("Tasas Anual", plot_tasa)
     ]
     c1, c2 = st.columns(2)
     for col, prefix in zip([c1, c2], ["A", "B"]):
         with col:
             st.markdown(f"### Gráfica {prefix}")
             indi = st.selectbox("Indicador", list(indicadores), key=f"cmp_ind_{prefix}")
-            df_orig = indicadores[indi].copy()
-            df_orig.name = indi
+            df_orig = indicadores[indi].copy(); df_orig.name = indi
             title, fn = st.selectbox("Vista", vistas, format_func=lambda x: x[0], key=f"cmp_v_{prefix}")
             fn(df_orig, f"cmp_{prefix}")
 
@@ -136,81 +148,49 @@ page = st.sidebar.radio("", ["Gráficas", "Mapa", "Comparación Gráficas"])
 
 if page in ["Gráficas", "Mapa"]:
     sel = st.sidebar.selectbox("Indicador", list(indicadores))
-    df_sel = indicadores[sel]
-    df_sel.name = sel
+    df_sel = indicadores[sel]; df_sel.name = sel
 
 if page == "Gráficas":
-    st.header(f"📈 {sel}")
+    st.header(f"📈 Indicador: {sel}")
     metricas_globales(df_sel)
-    titles = [
-        "Tendencia Global",
-        "Top N Países",
-        "Evolución por País",
-        "Comparación Indicadores",
-        "Tasas de variación anual"
-    ]
-    funcs = [
-        plot_tendencia,
-        plot_top,
-        plot_evolucion,
-        plot_comp_ind,
-        plot_tasa
-    ]
-    tabs = st.tabs(titles)
-    keys = ["tg", "tn", "ep", "ci", "tv"]
+    tabs = st.tabs(["Tendencia","Top N","Evolución","Comparación","Tasas"])
+    funcs = [plot_tendencia, plot_top, plot_evolucion, plot_comp_ind, plot_tasa]
+    keys  = ["tg","tn","ep","ci","tv"]
     for tab, fn, key in zip(tabs, funcs, keys):
         with tab:
             fn(df_sel, key)
 
 elif page == "Mapa":
-    # Paleta y tipo de mapa lado a lado en sidebar
-    mcol1, mcol2 = st.sidebar.columns(2)
-    with mcol1:
-        map_type = st.radio("", ["Mapa anual", "Incremento entre años"], index=0)
-    with mcol2:
-        palette = st.selectbox("", ["YlOrRd","Blues","PuRd","Greens"], index=0)
+    # … tu lógica de preparación de gdf_map, leyenda y data_col …
 
-    if map_type == "Mapa anual":
-        year     = st.sidebar.slider("Año", min_año, max_año, min_año)
-        gdf_map  = gdf.merge(df_sel[[str(year)]].reset_index(), on="country", how="left")
-        legend   = f"{sel} ({year})"
-        data_col = str(year)
-    else:
-        start, end = st.sidebar.slider(
-            "Selecciona rango de años",
-            min_value=min_año, max_value=max_año,
-            value=(min_año, min_año+1)
-        )
-        diff      = df_sel[str(end)] - df_sel[str(start)]
-        diff.name = f"Δ {start}→{end}"
-        gdf_map   = gdf.merge(
-            diff.reset_index().rename(columns={diff.name:str(diff.name)}),
-            on="country", how="left"
-        )
-        legend   = diff.name
-        data_col = str(diff.name)
-
-    m = folium.Map(location=[0,0], zoom_start=2, tiles=None, control_scale=True)
+    m = folium.Map(location=[0, 0], zoom_start=2, tiles=None, control_scale=True)
     folium.Choropleth(
-        geo_data    = gdf_map.__geo_interface__,
-        data        = gdf_map,
-        columns     = ["country", data_col],
-        key_on      = "feature.properties.country",
-        fill_color  = palette,
-        fill_opacity= 1,
-        line_opacity= 0.2,
+        geo_data=gdf_map.__geo_interface__,
+        data=gdf_map,
+        columns=["country", data_col],
+        key_on="feature.properties.country",
+        fill_color=palette,
+        fill_opacity=0.9,
+        line_opacity=0.3,
         nan_fill_color="lightgray",
-        legend_name = legend
+        legend_name=legend
     ).add_to(m)
     folium.GeoJson(
         gdf_map.__geo_interface__,
         style_function=lambda f: {"fillOpacity": 0, "weight": 0},
-        tooltip=GeoJsonTooltip(fields=["country", data_col], aliases=["País", legend], localize=True)
+        tooltip=GeoJsonTooltip(
+            fields=["country", data_col],
+            aliases=["País", legend],
+            localize=True
+        )
     ).add_to(m)
     MeasureControl(position="bottomleft", primary_length_unit="kilómetros").add_to(m)
     Fullscreen(position="topright").add_to(m)
-    st_folium(m, width=1080, height=920, key=f"map_{map_type}_{palette}")
 
+    # Centrar el mapa en la página
+    col1, col2, col3 = st.columns([1, 8, 1])
+    with col2:
+        st_folium(m, width=900, height=600, key=f"map_{map_type}_{palette}")
 else:
     st.header("🔀 Comparación de Gráficas")
     render_comparacion()
