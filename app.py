@@ -161,36 +161,37 @@ if page == "Gráficas":
             fn(df_sel, key)
 
 elif page == "Mapa":
-    # … tu lógica de preparación de gdf_map, leyenda y data_col …
+    st.sidebar.markdown("### Configuración de Mapa")
+    mcol1, mcol2 = st.sidebar.columns(2, gap="small")
+    with mcol1:
+        map_type = st.radio("", ["Anual", "Incremento"], index=0)
+    with mcol2:
+        palette = st.selectbox("", ["YlOrRd","Blues","PuRd","Greens"], index=0)
 
-    m = folium.Map(location=[0, 0], zoom_start=2, tiles=None, control_scale=True)
-    folium.Choropleth(
-        geo_data=gdf_map.__geo_interface__,
-        data=gdf_map,
-        columns=["country", data_col],
-        key_on="feature.properties.country",
-        fill_color=palette,
-        fill_opacity=0.9,
-        line_opacity=0.3,
-        nan_fill_color="lightgray",
-        legend_name=legend
-    ).add_to(m)
-    folium.GeoJson(
-        gdf_map.__geo_interface__,
-        style_function=lambda f: {"fillOpacity": 0, "weight": 0},
-        tooltip=GeoJsonTooltip(
-            fields=["country", data_col],
-            aliases=["País", legend],
-            localize=True
-        )
+    if map_type == "Anual":
+        year    = st.sidebar.slider("Año", min_año, max_año, min_año)
+        gdf_map = gdf.merge(df_sel[[str(year)]].reset_index(), on="country", how="left")
+        legend, data_col = f"{sel} ({year})", str(year)
+    else:
+        start, end = st.sidebar.slider("Rango años", min_value=min_año, max_value=max_año, value=(min_año, min_año+1))
+        diff       = df_sel[str(end)] - df_sel[str(start)]
+        diff.name  = f"Δ {start}→{end}"
+        gdf_map    = gdf.merge(diff.reset_index().rename(columns={diff.name:str(diff.name)}), on="country", how="left")
+        legend, data_col = diff.name, str(diff.name)
+
+    m = folium.Map(location=[0,0], zoom_start=2, tiles=None, control_scale=True)
+    folium.Choropleth(geo_data=gdf_map.__geo_interface__, data=gdf_map,
+                      columns=["country", data_col], key_on="feature.properties.country",
+                      fill_color=palette, fill_opacity=0.9, line_opacity=0.3,
+                      nan_fill_color="lightgray", legend_name=legend).add_to(m)
+    folium.GeoJson(gdf_map.__geo_interface__,
+                   style_function=lambda f: {"fillOpacity": 0, "weight": 0},
+                   tooltip=GeoJsonTooltip(fields=["country", data_col], aliases=["País", legend], localize=True)
     ).add_to(m)
     MeasureControl(position="bottomleft", primary_length_unit="kilómetros").add_to(m)
     Fullscreen(position="topright").add_to(m)
+    st_folium(m, width=1080, height=800, key=f"map_{map_type}_{palette}")
 
-    # Centrar el mapa en la página
-    col1, col2, col3 = st.columns([1, 8, 1])
-    with col2:
-        st_folium(m, width=900, height=600, key=f"map_{map_type}_{palette}")
 else:
     st.header("🔀 Comparación de Gráficas")
     render_comparacion()
